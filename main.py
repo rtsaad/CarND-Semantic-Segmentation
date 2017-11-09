@@ -56,8 +56,8 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :param num_classes: Number of classes to classify
     :return: The Tensor for the last layer of output
     """
-    conv_1 = tf.layer.conv2d(vgg_layer7_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
-    output = tf.layer.conv2d(conv_1, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
+    output = tf.layer.conv2d(vgg_layer7_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
+    output = tf.layer.conv2d(output, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
     
     output = tf.add(output, vgg_layer4_out)
     output = tf.layers.conv2d_transpose(output, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
@@ -78,8 +78,13 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :param num_classes: Number of classes to classify
     :return: Tuple of (logits, train_op, cross_entropy_loss)
     """
-    # TODO: Implement function
-    return None, None, None
+
+    logits = tf.reshape(nn_last_layer, (-1, num_classes))
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits, correct_label))
+    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate) 
+    training_operation = optimizer.minimize(cross_entropy_loss)
+    
+    return logits, training_operation, cross_entropy_loss
 tests.test_optimize(optimize)
 
 
@@ -98,7 +103,9 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
-    # TODO: Implement function
+    for i in range(epochs):
+        
+    
     pass
 tests.test_train_nn(train_nn)
 
