@@ -3,6 +3,7 @@ import tensorflow as tf
 import helper
 import warnings
 from distutils.version import LooseVersion
+from sklearn.utils import shuffle
 import project_tests as tests
 
 
@@ -37,13 +38,13 @@ def load_vgg(sess, vgg_path):
 
     tf.save_model.loader.load(sess, [vgg_tag], vgg_path)
     graph = tf.get_default_graph()
-    input_tensor = graph.get_tensor_by_name(vgg_input_tensor)
-    keep_tensor_tensor = graph.get_tensor_by_name(vgg_keep_prob_tensor_name)
-    layer3_input = graph.get_tensor_by_name(vgg_layer3_out_tensor_name)
-    layer4_input = graph.get_tensor_by_name(vgg_layer4_out_tensor_name)
-    layer7_input = graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
+    input_tensor = graph.get_tensor_by_name(vgg_input_tensor_name)
+    keep_tensor = graph.get_tensor_by_name(vgg_keep_prob_tensor_name)
+    layer3_tensor = graph.get_tensor_by_name(vgg_layer3_out_tensor_name)
+    layer4_tensor = graph.get_tensor_by_name(vgg_layer4_out_tensor_name)
+    layer7_tensor = graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
     
-    return input_tensor, keep_prob_tensor, layer3_tensor, layer4_tensor, layer7_tensor
+    return input_tensor, keep_tensor, layer3_tensor, layer4_tensor, layer7_tensor
 tests.test_load_vgg(load_vgg, tf)
 
 
@@ -67,6 +68,29 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     
     return output
 tests.test_layers(layers)
+
+def mean_iou(ground_truth, prediction, num_classes):
+    """
+    Compute the mean IoU
+    :param ground_truth: TF tensor with ground_truth values
+    :param prediction: TF tensor with predictions
+    :param num_classes: number of classes to predict
+    :return: tuple with iou and iou_op tensors
+    """
+    iou, iou_op = tf.metrics.mean_iou(ground_truth, prediction, num_classes)
+    return iou, iou_op
+    
+def evaluate(sess, ground_truth, prediction, num_classes):
+    """
+    Compute IOU evaluation
+    :param sess:
+    :param ground_truth: 
+    :param prediction:
+    :param num_classes:
+    """
+    iou, iou_op = mean_iou(ground_truth, prediction, num_classes)
+    sess.run(iou_op)
+    print("Mean IoU =", sess.run(iou))
 
 
 def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
@@ -104,13 +128,29 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param learning_rate: TF Placeholder for learning rate
     """
     for i in range(epochs):
+        print("Run EPOCH " + str(i))
+        X_train = get_batches_fn(batch_size)
+        y_train = correct_label
         
+        X_train, y_train = shuffle(X_train, y_train)
+        
+        for offset in range(0, batch_size, 256): 
+            #Select batch                
+            end = offset + 256               
+            batch_x = X_train[offset:end]
+            batch_y = y_train[offset:end]
+            
+            #Run optmizer
+            sess.run(train_op, feed_dict={input_image: batch_x, correct_label: batch_y, learning_rate: learning_rate, keep_prob:keep_prob})  
+            #Print IOU Evaluation
+        #evaluate(sess, ground_truth, prediction, num_classes)
     
-    pass
 tests.test_train_nn(train_nn)
 
 
 def run():
+    learning_rate = 0.001
+    keep_prob   = 0.5
     num_classes = 2
     image_shape = (160, 576)
     data_dir = './data'
@@ -133,9 +173,17 @@ def run():
         # OPTIONAL: Augment Images for better results
         #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
 
-        # TODO: Build NN using load_vgg, layers, and optimize function
-
-        # TODO: Train NN using the train_nn function
+        # Build NN using load_vgg, layers, and optimize function
+        # Load VGG
+        input_tensor, keep_tensor, layer3_tensor, layer4_tensor, layer7_tensor = load_vgg(sess, vgg_path)
+        # Transfor into a FCN
+        output = layers(layer3_tensor, layer4_tensor, layer7_tensor, num_classes)
+        # Load Optmizer
+        logits, train_op, cross_entropy_loss = optimize(output, correct_label, learning_rate, num_classes)
+        
+        # Train NN using the train_nn function
+        train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_tensor,
+             correct_label, keep_prob, learning_rate)
 
         # TODO: Save inference data using helper.save_inference_samples
         #  helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
