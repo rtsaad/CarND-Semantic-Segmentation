@@ -16,6 +16,8 @@ if not tf.test.gpu_device_name():
 else:
     print('Default GPU Device: {}'.format(tf.test.gpu_device_name()))
 
+#dowload vgg
+#https://s3-us-west-1.amazonaws.com/udacity-selfdrivingcar/vgg.zip
 
 def load_vgg(sess, vgg_path):
     """
@@ -32,8 +34,16 @@ def load_vgg(sess, vgg_path):
     vgg_layer3_out_tensor_name = 'layer3_out:0'
     vgg_layer4_out_tensor_name = 'layer4_out:0'
     vgg_layer7_out_tensor_name = 'layer7_out:0'
+
+    tf.save_model.loader.load(sess, [vgg_tag], vgg_path)
+    graph = tf.get_default_graph()
+    input_tensor = graph.get_tensor_by_name(vgg_input_tensor)
+    keep_tensor_tensor = graph.get_tensor_by_name(vgg_keep_prob_tensor_name)
+    layer3_input = graph.get_tensor_by_name(vgg_layer3_out_tensor_name)
+    layer4_input = graph.get_tensor_by_name(vgg_layer4_out_tensor_name)
+    layer7_input = graph.get_tensor_by_name(vgg_layer7_out_tensor_name)
     
-    return None, None, None, None, None
+    return input_tensor, keep_prob_tensor, layer3_tensor, layer4_tensor, layer7_tensor
 tests.test_load_vgg(load_vgg, tf)
 
 
@@ -46,8 +56,16 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :param num_classes: Number of classes to classify
     :return: The Tensor for the last layer of output
     """
-    # TODO: Implement function
-    return None
+    conv_1 = tf.layer.conv2d(vgg_layer7_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
+    output = tf.layer.conv2d(conv_1, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
+    
+    output = tf.add(output, vgg_layer4_out)
+    output = tf.layers.conv2d_transpose(output, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
+
+    output = tf.add(output, vgg_layer3_out)
+    output = tf.layers.conv2d_transpose(output, num_classes, 16, 8, padding='same', kernel_regularizer=tf.contrib.layer.l2_regularizer(1e-3))
+    
+    return output
 tests.test_layers(layers)
 
 
