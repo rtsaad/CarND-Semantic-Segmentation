@@ -58,20 +58,22 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :return: The Tensor for the last layer of output
     """
 
-    output = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
-    output = tf.layers.conv2d_transpose(output, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
-    
-    pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))    
-    output = tf.add(output, pool4, name='add_1')
-    output = tf.layers.conv2d_transpose(output, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+    alfa = 1e-3
 
-    pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, strides=(1,1), padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+    output = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
+    output = tf.layers.conv2d_transpose(output, num_classes, 4, 2, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
+    
+    pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))    
+    output = tf.add(output, pool4, name='add_1')
+    output = tf.layers.conv2d_transpose(output, num_classes, 4, 2, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
+
+    pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
     output = tf.add(output, pool3, name='add_2')
-    output = tf.layers.conv2d_transpose(output, num_classes, 16, 8, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(1e-3))
+    output = tf.layers.conv2d_transpose(output, num_classes, 16, 8, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
     
     return output
 tests.test_layers(layers)
-
+ 
 def mean_iou(ground_truth, prediction, num_classes):
     """
     Compute the mean IoU
@@ -82,8 +84,8 @@ def mean_iou(ground_truth, prediction, num_classes):
     """
     iou, iou_op = tf.metrics.mean_iou(ground_truth, prediction, num_classes)
     return iou, iou_op
-    
-def evaluate(sess, iou_op, output):
+
+def evaluate(sess, iou, iou_op):
     """
     Compute IOU evaluation
     :param sess:
@@ -92,8 +94,8 @@ def evaluate(sess, iou_op, output):
     :param num_classes:
     """
     
-    #sess.run(iou_op, feed_dict={logits: })
-    #print("Mean IoU =", sess.run(iou))
+    sess.run(iou_op)
+    print("Mean IoU =", sess.run(iou))
 
 
 def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
@@ -108,7 +110,7 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
 
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
-    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate) 
+    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
     training_operation = optimizer.minimize(cross_entropy_loss)
     
     return logits, training_operation, cross_entropy_loss
@@ -134,20 +136,20 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
         print("Run EPOCH " + str(i))
         j = 0
         for batch_x, batch_y in get_batches_fn(batch_size):
-            print("Processing " + str(j*batch_size), end="")
+            print("Processing " + str(j*batch_size))
             j+=1
             #Run optmizer
-            sess.run(train_op, feed_dict={input_image: batch_x, correct_label: batch_y, learning_rate: 0.001, keep_prob: float(0.5)})
+            _, loss = sess.run([train_op, cross_entropy_loss], feed_dict={input_image: batch_x, correct_label: batch_y, learning_rate: 0.001, keep_prob: 0.5})
             #Print IOU Evaluation
-        #evaluate(sess, ground_truth, prediction, num_classes)
+            print("LOSS " + str(loss)) 
     
 tests.test_train_nn(train_nn)
 
 
 def run():
-    epochs = 8
+    epochs = 4
     learning_rate = tf.placeholder(tf.float32)
-    batch_size = 4 
+    batch_size = 16
     num_classes = 2
     image_shape = (160, 576)
     data_dir = './data'
@@ -179,16 +181,16 @@ def run():
         # Load Optmizer
         correct_label = tf.placeholder(tf.float32, (None, image_shape[0], image_shape[1], num_classes))
         logits, train_op, cross_entropy_loss = optimize(output, correct_label, learning_rate, num_classes)
-        #Define IOU for evaluation
-        iou, iou_op = mean_iou(correct_label, logits, num_classes)
+        
         # Train NN using the train_nn function
         sess.run(tf.global_variables_initializer())
+        sess.run(tf.local_variables_initializer())
         train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_tensor,
              correct_label, keep_prob_tensor, learning_rate)
-        #evaluate
+        
         
         # TODO: Save inference data using helper.save_inference_samples
-        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob, input_image)
+        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob_tensor, input_tensor)
 
         # OPTIONAL: Apply the trained model to a video
 
