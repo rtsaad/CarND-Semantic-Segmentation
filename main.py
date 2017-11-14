@@ -58,20 +58,22 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :return: The Tensor for the last layer of output
     """
 
-    alfa = 1e-3
+    alfa = 1e-4
+    mu = 0
+    sigma = 0.1 
 
-    output = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
-    output = tf.layers.conv2d_transpose(output, num_classes, 4, 2, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
+    output1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='encode_1')
+    output1 = tf.layers.conv2d_transpose(output1, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='decode_1')
     
-    pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))    
-    output = tf.add(output, pool4, name='add_1')
-    output = tf.layers.conv2d_transpose(output, num_classes, 4, 2, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
+    pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='encode_pool_4')    
+    output2 = tf.add(output1, pool4, name='add_1')
+    output2 = tf.layers.conv2d_transpose(output2, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),  name='decode_pool_4')
 
-    pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
-    output = tf.add(output, pool3, name='add_2')
-    output = tf.layers.conv2d_transpose(output, num_classes, 16, 8, padding='same')#, kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa))
+    pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='encode_pool_3')
+    output3 = tf.add(output2, pool3, name='add_2')
+    output3 = tf.layers.conv2d_transpose(output3, num_classes, 16, 8, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='decode_pool_3')
     
-    return output
+    return output3
 tests.test_layers(layers)
  
 def mean_iou(ground_truth, prediction, num_classes):
@@ -111,10 +113,23 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     logits = tf.reshape(nn_last_layer, (-1, num_classes))
     cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
     optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
-    training_operation = optimizer.minimize(cross_entropy_loss)
+    training_operation = optimizer.minimize(cross_entropy_loss)    
     
     return logits, training_operation, cross_entropy_loss
 tests.test_optimize(optimize)
+
+def summary(cross_entropy_loss):
+    """
+    Keep track of data for the TensorBoard
+    :param loss: TF Tensor of cross entropy loss
+    :return: TF tensor summary operator 
+    """
+
+    #for tensorboard
+    tf.summary.scalar("cost", cross_entropy_loss)
+    summary_op = tf.summary.merge_all()
+
+    return summary_op
 
 
 def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_image,
@@ -132,6 +147,10 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
+    #use tensorboard
+    writer = tf.summary.FileWriter('/tmp/tensorflow', graph=tf.get_default_graph())
+    summary_op = summary(cross_entropy_loss)
+
     for i in range(epochs):
         print("Run EPOCH " + str(i))
         j = 0
@@ -139,16 +158,18 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
             print("Processing " + str(j*batch_size))
             j+=1
             #Run optmizer
-            _, loss = sess.run([train_op, cross_entropy_loss], feed_dict={input_image: batch_x, correct_label: batch_y, learning_rate: 0.001, keep_prob: 0.5})
+            _, loss, smm = sess.run([train_op, cross_entropy_loss, summary_op], feed_dict={input_image: batch_x, correct_label: batch_y, learning_rate: 0.001, keep_prob: 0.5})
             #Print IOU Evaluation
-            print("LOSS " + str(loss)) 
+            print("LOSS " + str(loss))
+            #save summary data for tensor flow
+            writer.add_summary(smm, (i* 300) + batch_size * j)
     
 tests.test_train_nn(train_nn)
 
 
 def run():
-    epochs = 4
-    learning_rate = tf.placeholder(tf.float32)
+    epochs = 2
+    learning_rate = tf.placeholder(tf.float32, name='learning_rate')
     batch_size = 16
     num_classes = 2
     image_shape = (160, 576)
