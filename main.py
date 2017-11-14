@@ -62,17 +62,36 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     mu = 0
     sigma = 0.1 
 
-    output1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='encode_1')
-    output1 = tf.layers.conv2d_transpose(output1, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='decode_1')
-    
-    pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='encode_pool_4')    
-    output2 = tf.add(output1, pool4, name='add_1')
-    output2 = tf.layers.conv2d_transpose(output2, num_classes, 4, 2, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),  name='decode_pool_4')
+    output1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',\
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
+        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='encode_1')
 
-    pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='encode_pool_3')
+    output1 = tf.layers.conv2d_transpose(output1, num_classes, 4, 2, padding='same',\
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
+        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='decode_1')
+
+    pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same',\
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
+        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),\
+        name='encode_pool_4')
+
+    output2 = tf.add(output1, pool4, name='add_1')
+    output2 = tf.layers.conv2d_transpose(output2, num_classes, 4, 2, padding='same',\
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
+        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),\
+        name='decode_pool_4')
+
+    pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, padding='same',\
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
+        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),\
+        name='encode_pool_3')
+
     output3 = tf.add(output2, pool3, name='add_2')
-    output3 = tf.layers.conv2d_transpose(output3, num_classes, 16, 8, padding='same', kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa), kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='decode_pool_3')
-    
+    output3 = tf.layers.conv2d_transpose(output3, num_classes, 16, 8, padding='same',\
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
+        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),\
+        name='decode_pool_3')
+
     return output3
 tests.test_layers(layers)
  
