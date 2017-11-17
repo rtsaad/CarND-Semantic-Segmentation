@@ -5,6 +5,7 @@ import warnings
 from distutils.version import LooseVersion
 from sklearn.utils import shuffle
 import project_tests as tests
+import math
 
 
 # Check TensorFlow Version
@@ -58,7 +59,7 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     :return: The Tensor for the last layer of output
     """
 
-    alfa = 1e-4
+    alfa = 1e-3
     mu = 0
     sigma = 0.1 
 
@@ -170,26 +171,42 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     writer = tf.summary.FileWriter('/tmp/tensorflow', graph=tf.get_default_graph())
     summary_op = summary(cross_entropy_loss)
 
+    l_rate = 0.0001
+    acc_loss =  1000000
     for i in range(epochs):
         print("Run EPOCH " + str(i))
         j = 0
+        m_loss = 1000000
         for batch_x, batch_y in get_batches_fn(batch_size):
             print("Processing " + str(j*batch_size))
-            j+=1
+            j += 1
             #Run optmizer
-            _, loss, smm = sess.run([train_op, cross_entropy_loss, summary_op], feed_dict={input_image: batch_x, correct_label: batch_y, learning_rate: 0.001, keep_prob: 0.5})
+            _, loss, smm = sess.run([train_op, cross_entropy_loss, summary_op],\
+                feed_dict={input_image: batch_x,\
+                    correct_label: batch_y,\
+                    learning_rate: l_rate,\
+                    keep_prob: 0.5})
+            m_loss = min(loss, m_loss)
             #Print IOU Evaluation
             print("LOSS " + str(loss))
             #save summary data for tensor flow
-            writer.add_summary(smm, (i* 300) + batch_size * j)
-    
+            #writer.add_summary(smm, (i* 300) + batch_size * j)  
+        if acc_loss == 1000000:
+            acc_loss = m_loss
+        l = m_loss - acc_loss
+        print("Local / Global Loss " + str(m_loss) + " / " + str(acc_loss))
+        if l > -0.2:
+            l_rate = l_rate /10
+            print("Change Learning Rate: " + str(l_rate))
+        acc_loss = m_loss
+
 tests.test_train_nn(train_nn)
 
 
 def run():
-    epochs = 2
+    epochs = 8
     learning_rate = tf.placeholder(tf.float32, name='learning_rate')
-    batch_size = 16
+    batch_size = 4
     num_classes = 2
     image_shape = (160, 576)
     data_dir = './data'
