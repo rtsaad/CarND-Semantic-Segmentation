@@ -6,7 +6,15 @@ from distutils.version import LooseVersion
 from sklearn.utils import shuffle
 import project_tests as tests
 import math
+import argparse
+from moviepy.editor import VideoFileClip
+import scipy.misc
+import numpy as np
 
+
+#Global Variables
+tensorboard = False #Save temp files for tensorboard
+trainning = True #Trainning Enable for the network
 
 # Check TensorFlow Version
 assert LooseVersion(tf.__version__) >= LooseVersion('1.0'), 'Please use TensorFlow version 1.0 or newer.  You are using {}'.format(tf.__version__)
@@ -65,60 +73,40 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
 
     output1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
-        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='encode_1')
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),\
+        name='encode_1')
+        #tf.random_normal_initializer(stddev=0.01)
+        #tf.truncated_normal_initializer(mean=mu, stddev=sigma)
 
     output1 = tf.layers.conv2d_transpose(output1, num_classes, 4, 2, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
-        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma), name='decode_1')
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),\
+        name='decode_1')
 
     pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
-        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),\
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),\
         name='encode_pool_4')
 
     output2 = tf.add(output1, pool4, name='add_1')
     output2 = tf.layers.conv2d_transpose(output2, num_classes, 4, 2, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
-        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),\
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),\
         name='decode_pool_4')
 
     pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
-        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),\
+        kernel_initializer=tf.random_normal_initializer(stddev=0.01),\
         name='encode_pool_3')
 
     output3 = tf.add(output2, pool3, name='add_2')
     output3 = tf.layers.conv2d_transpose(output3, num_classes, 16, 8, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
-        kernel_initializer=tf.truncated_normal_initializer(mean=mu, stddev=sigma),\
+        kernel_initializer=tf.random_normal_initializer(stddev=0.01),\
         name='decode_pool_3')
 
     return output3
 tests.test_layers(layers)
- 
-def mean_iou(ground_truth, prediction, num_classes):
-    """
-    Compute the mean IoU
-    :param ground_truth: TF tensor with ground_truth values
-    :param prediction: TF tensor with predictions
-    :param num_classes: number of classes to predict
-    :return: tuple with iou and iou_op tensors
-    """
-    iou, iou_op = tf.metrics.mean_iou(ground_truth, prediction, num_classes)
-    return iou, iou_op
-
-def evaluate(sess, iou, iou_op):
-    """
-    Compute IOU evaluation
-    :param sess:
-    :param ground_truth: 
-    :param prediction:
-    :param num_classes:
-    """
-    
-    sess.run(iou_op)
-    print("Mean IoU =", sess.run(iou))
-
 
 def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     """
@@ -130,10 +118,11 @@ def optimize(nn_last_layer, correct_label, learning_rate, num_classes):
     :return: Tuple of (logits, train_op, cross_entropy_loss)
     """
 
-    logits = tf.reshape(nn_last_layer, (-1, num_classes))
-    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label))
-    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate)
-    training_operation = optimizer.minimize(cross_entropy_loss)    
+    logits = tf.reshape(nn_last_layer, (-1, num_classes), name='logits')
+    correct_label = tf.reshape(correct_label, (-1, num_classes), name='correct_label')
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label), name='mean')
+    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate, name='Adam')
+    training_operation = optimizer.minimize(cross_entropy_loss, name='Minimize')    
     
     return logits, training_operation, cross_entropy_loss
 tests.test_optimize(optimize)
@@ -167,44 +156,98 @@ def train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_l
     :param keep_prob: TF Placeholder for dropout keep probability
     :param learning_rate: TF Placeholder for learning rate
     """
-    #use tensorboard
-    writer = tf.summary.FileWriter('/tmp/tensorflow', graph=tf.get_default_graph())
-    summary_op = summary(cross_entropy_loss)
+    #initialize variables    
+    sess.run(tf.global_variables_initializer())
 
-    l_rate = 0.0001
+    #save model at the end
+    if(epochs > 1): #to avoid bugs with test function
+        saver = tf.train.Saver()
+
+    #use tensorboard
+    if tensorboard:
+        writer = tf.summary.FileWriter('/tmp/tensorflow', graph=tf.get_default_graph())
+        summary_op = summary(cross_entropy_loss)
+
+    l_rate = 0.001
     acc_loss =  1000000
     for i in range(epochs):
         print("Run EPOCH " + str(i))
         j = 0
         m_loss = 1000000
+        a_loss =[]
         for batch_x, batch_y in get_batches_fn(batch_size):
-            print("Processing " + str(j*batch_size))
+            print("Processing " + str(j*batch_size) + " images")
             j += 1
             #Run optmizer
-            _, loss, smm = sess.run([train_op, cross_entropy_loss, summary_op],\
-                feed_dict={input_image: batch_x,\
-                    correct_label: batch_y,\
-                    learning_rate: l_rate,\
-                    keep_prob: 0.5})
-            m_loss = min(loss, m_loss)
-            #Print IOU Evaluation
+            if not tensorboard:
+                _, loss = sess.run([train_op, cross_entropy_loss],\
+                    feed_dict={input_image: batch_x,\
+                        correct_label: batch_y,\
+                        learning_rate: l_rate,\
+                        keep_prob: 0.5})
+            else:
+                _, loss, smm = sess.run([train_op, cross_entropy_loss, summary_op],\
+                    feed_dict={input_image: batch_x,\
+                        correct_label: batch_y,\
+                        learning_rate: l_rate,\
+                        keep_prob: 0.5})
+            a_loss.append(loss)
             print("LOSS " + str(loss))
             #save summary data for tensor flow
-            #writer.add_summary(smm, (i* 300) + batch_size * j)  
+            if tensorboard and (j*batch_size) % 32 == 0:
+                print("SAVE TENSORBOARD")
+                writer.add_summary(smm, (300*i) + j) 
+        m_loss = np.mean(np.array(a_loss))
         if acc_loss == 1000000:
             acc_loss = m_loss
         l = m_loss - acc_loss
         print("Local / Global Loss " + str(m_loss) + " / " + str(acc_loss))
-        if l > -0.2:
-            l_rate = l_rate /10
+        if l > 0:
+            #l_rate = l_rate /10
             print("Change Learning Rate: " + str(l_rate))
         acc_loss = m_loss
+        #save model (checkpoint)        
+        if(epochs > 1): #to avoid bugs with test function
+            print("SAVING MODEL")
+            saver.save(sess, "data/model/model.ckpt")
 
 tests.test_train_nn(train_nn)
+ 
+
+def create_video(video, sess, logits, keep_prob, image_input, image_shape):
+    def pipeline(image):
+        image = scipy.misc.imresize(image, image_shape)
+        im_softmax = sess.run([tf.nn.softmax(logits)],\
+            {keep_prob: 1.0, image_input: [image]})
+        im_softmax = im_softmax[0][:, 1].reshape(image_shape[0], image_shape[1])
+        segmentation = (im_softmax > 0.5).reshape(image_shape[0], image_shape[1], 1)
+        mask = np.dot(segmentation, np.array([[0, 255, 0, 127]]))
+        mask = scipy.misc.toimage(mask, mode="RGBA")
+        street_im = scipy.misc.toimage(image)
+        street_im.paste(mask, box=None, mask=mask)
+        return np.array(street_im)
+
+    #process video
+    new_video = video.fl_image(pipeline)
+    #save new video
+    new_video.write_videofile('result.mp4')
 
 
 def run():
-    epochs = 8
+    #global variables
+    global tensorboard, trainning
+    #Arguments
+    parser = argparse.ArgumentParser(description='Semantic Segmentation Trainning')
+    parser.add_argument('-tb', '--tensorboard', action='store_true', help='Save data for TensorBoard')
+    parser.add_argument('-to', '--trainning_off',  action='store_false', help='Set Trainning OFF for the network')
+    parser.add_argument('-v', '--video',  action='store_true', help='Apply Segmentation FCN network over the video')
+    args = parser.parse_args()
+    tensorboard = args.tensorboard
+    trainning = args.trainning_off
+    video = args.video
+
+    #Tranning values
+    epochs = 3
     learning_rate = tf.placeholder(tf.float32, name='learning_rate')
     batch_size = 4
     num_classes = 2
@@ -214,11 +257,7 @@ def run():
     tests.test_for_kitti_dataset(data_dir)
 
     # Download pretrained vgg model
-    helper.maybe_download_pretrained_vgg(data_dir)
-
-    # OPTIONAL: Train and Inference on the cityscapes dataset instead of the Kitti dataset.
-    # You'll need a GPU with at least 10 teraFLOPS to train on.
-    #  https://www.cityscapes-dataset.com/
+    helper.maybe_download_pretrained_vgg(data_dir)    
 
     with tf.Session() as sess:
         # Path to vgg model
@@ -226,31 +265,36 @@ def run():
         # Create function to get batches
         get_batches_fn = helper.gen_batch_function(
             os.path.join(data_dir, 'data_road/training'), image_shape)
-
-        # OPTIONAL: Augment Images for better results
-        #  https://datascience.stackexchange.com/questions/5224/how-to-prepare-augment-images-for-neural-network
-
+            
         # Build NN using load_vgg, layers, and optimize function
         # Load VGG
         input_tensor, keep_prob_tensor, layer3_tensor, layer4_tensor, layer7_tensor = load_vgg(sess, vgg_path)
         # Transfor into a FCN
         output = layers(layer3_tensor, layer4_tensor, layer7_tensor, num_classes)
         # Load Optmizer
-        correct_label = tf.placeholder(tf.float32, (None, image_shape[0], image_shape[1], num_classes))
+        correct_label = tf.placeholder(tf.float32, [None, None, None, num_classes], name='correct_label')
         logits, train_op, cross_entropy_loss = optimize(output, correct_label, learning_rate, num_classes)
         
         # Train NN using the train_nn function
-        sess.run(tf.global_variables_initializer())
-        sess.run(tf.local_variables_initializer())
-        train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_tensor,
-             correct_label, keep_prob_tensor, learning_rate)
         
+        if trainning:
+            print("Trainning Model")
+            train_nn(sess, epochs, batch_size, get_batches_fn, train_op, cross_entropy_loss, input_tensor,
+                 correct_label, keep_prob_tensor, learning_rate)        
         
-        # TODO: Save inference data using helper.save_inference_samples
-        helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob_tensor, input_tensor)
+            # Save inference data using helper.save_inference_samples
+            helper.save_inference_samples(runs_dir, data_dir, sess, image_shape, logits, keep_prob_tensor, input_tensor)
+        else: 
+            print("Loading pre-trained model")
+            #load model
+            saver = tf.train.Saver()
+            saver.restore(sess, "./data/model/model.ckpt")
 
-        # OPTIONAL: Apply the trained model to a video
-
+        #Apply the trained model to a video
+        if video:
+            print("Creating Video, saved at result.mp4")
+            clip = VideoFileClip('driving_10.mp4')
+            create_video(clip, sess, logits, keep_prob_tensor, input_tensor, image_shape)
 
 if __name__ == '__main__':
     run()
