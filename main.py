@@ -74,6 +74,8 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     output1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
         kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),\
+        #kernel_initializer= tf.contrib.layers.xavier_initializer(uniform=True),
+        activation = None,\
         name='encode_1')
         #tf.random_normal_initializer(stddev=0.01)
         #tf.truncated_normal_initializer(mean=mu, stddev=sigma)
@@ -81,29 +83,42 @@ def layers(vgg_layer3_out, vgg_layer4_out, vgg_layer7_out, num_classes):
     output1 = tf.layers.conv2d_transpose(output1, num_classes, 4, 2, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
         kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),\
+        #kernel_initializer= tf.contrib.layers.xavier_initializer(uniform=True),
+        activation = None,\
         name='decode_1')
+    output1 = tf.nn.elu(output1)
 
     pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
         kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),\
+        #kernel_initializer= tf.contrib.layers.xavier_initializer(uniform=True),
+        activation = None,\
         name='encode_pool_4')
 
     output2 = tf.add(output1, pool4, name='add_1')
     output2 = tf.layers.conv2d_transpose(output2, num_classes, 4, 2, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
         kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),\
+        #kernel_initializer= tf.contrib.layers.xavier_initializer(uniform=True),
+        activation = None,\
         name='decode_pool_4')
+    output2 = tf.nn.elu(output2)
 
     pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
         kernel_initializer=tf.random_normal_initializer(stddev=0.01),\
+        #kernel_initializer= tf.contrib.layers.xavier_initializer(uniform=True),
+        activation = None,\
         name='encode_pool_3')
 
     output3 = tf.add(output2, pool3, name='add_2')
     output3 = tf.layers.conv2d_transpose(output3, num_classes, 16, 8, padding='same',\
         kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),\
         kernel_initializer=tf.random_normal_initializer(stddev=0.01),\
+        #kernel_initializer= tf.contrib.layers.xavier_initializer(uniform=True),
+        activation = None,\
         name='decode_pool_3')
+    output3 = tf.nn.elu(output3)
 
     return output3
 tests.test_layers(layers)
@@ -238,7 +253,7 @@ def run():
     global tensorboard, trainning
     #Arguments
     parser = argparse.ArgumentParser(description='Semantic Segmentation Trainning')
-    parser.add_argument('-tb', '--tensorboard', action='store_true', help='Save data for TensorBoard')
+    parser.add_argument('-tb', '--tensorboard', action='store_true', help='Save data for TensorBoard') 
     parser.add_argument('-to', '--trainning_off',  action='store_false', help='Set Trainning OFF for the network')
     parser.add_argument('-v', '--video',  action='store_true', help='Apply Segmentation FCN network over the video')
     args = parser.parse_args()
@@ -247,7 +262,7 @@ def run():
     video = args.video
 
     #Tranning values
-    epochs = 3
+    epochs = 8
     learning_rate = tf.placeholder(tf.float32, name='learning_rate')
     batch_size = 4
     num_classes = 2
@@ -293,7 +308,8 @@ def run():
         #Apply the trained model to a video
         if video:
             print("Creating Video, saved at result.mp4")
-            clip = VideoFileClip('driving_10.mp4')
+            #clip = VideoFileClip('driving_10.mp4')
+            clip = VideoFileClip('driving.webm')
             create_video(clip, sess, logits, keep_prob_tensor, input_tensor, image_shape)
 
 if __name__ == '__main__':
