@@ -5,8 +5,8 @@ This project consists of a TensorFlow implementation of an FCN-8 (full convoluti
 
 [//]: # (Image References)
 
-[image1]: images/example.png "Input - Outpu image example."
-[image2]: images/resuts.png "Final Segmented image." 
+[image1]: /images/example.png  "Input - Outpu image example."
+[image2]: /images/resuts.png  "Final Segmented image." 
 
 ## 1.Access 
 
