@@ -75,7 +75,11 @@ The FCN-8 consists of an encoder/decoder network. The first part is a encoder ne
 The dense (fully connected) layer from the original VGG is replaced by 1-by-1 convolution to preserve the spatial information. 
 
 ```python
-
+output1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),
+        activation = None,\
+        name='encode_1')
 ```
 
 ### 4.3 Decoder
@@ -83,19 +87,69 @@ The dense (fully connected) layer from the original VGG is replaced by 1-by-1 co
 The decoder part of the network upsample the input into the original image size. The output will be a 4-dimensional tensor: batch size, original image size (height/width) and number of classes.
 
 ```python
-
+output1 = tf.layers.conv2d_transpose(output1, num_classes, 4, 2, padding='same',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),
+        activation = None,
+        name='decode_1')
+output1 = tf.nn.elu(output1)
 ```
 
 The FCN-8 use skip connections to improve the accurace os the segmentations. The skip connections consists of combining previous layers from the VGG with shallow layers.
 
 ```python
-
+pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same',
+	kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+	kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma), 
+        activation = None,
+        name='encode_pool_4')
+output2 = tf.add(output1, pool4, name='add_1')
 ```
 
 The complete Decoder Layer is presented below:
 
 ```python
 
+   output1 = tf.layers.conv2d(vgg_layer7_out, num_classes, 1, padding='same',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma), 
+        activation = None,
+        name='encode_1') 
+
+    output1 = tf.layers.conv2d_transpose(output1, num_classes, 4, 2, padding='same',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma), 
+        activation = None,\
+        name='decode_1')
+    output1 = tf.nn.elu(output1)
+
+    pool4 = tf.layers.conv2d(vgg_layer4_out, num_classes, 1, padding='same',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),
+        activation = None,
+        name='encode_pool_4')
+
+    output2 = tf.add(output1, pool4, name='add_1')
+    output2 = tf.layers.conv2d_transpose(output2, num_classes, 4, 2, padding='same',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+        kernel_initializer=tf.random_normal_initializer(mean=mu, stddev=sigma),
+        activation = None,
+        name='decode_pool_4')
+    output2 = tf.nn.elu(output2)
+
+    pool3 = tf.layers.conv2d(vgg_layer3_out, num_classes, 1, padding='same',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+        kernel_initializer=tf.random_normal_initializer(stddev=0.01),
+        activation = None,
+        name='encode_pool_3')
+
+    output3 = tf.add(output2, pool3, name='add_2')
+    output3 = tf.layers.conv2d_transpose(output3, num_classes, 16, 8, padding='same',
+        kernel_regularizer=tf.contrib.layers.l2_regularizer(alfa),
+        kernel_initializer=tf.random_normal_initializer(stddev=0.01),
+        activation = None,
+        name='decode_pool_3')
+    output3 = tf.nn.elu(output3)
 ```
 
 ### 4.4 Trainning
@@ -104,8 +158,11 @@ The final step is to train the network by assinging each pixel to the appropriat
 
 
 ```python
-
-
+    logits = tf.reshape(nn_last_layer, (-1, num_classes), name='logits')
+    correct_label = tf.reshape(correct_label, (-1, num_classes), name='correct_label')
+    cross_entropy_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=correct_label), name='mean')
+    optimizer = tf.train.AdamOptimizer(learning_rate = learning_rate, name='Adam')
+    training_operation = optimizer.minimize(cross_entropy_loss, name='Minimize') 
 ```
 
 ### 4.5 Results
